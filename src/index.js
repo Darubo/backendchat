@@ -1,99 +1,51 @@
-const express = require('express'); //importa o express
-const { db_connection } = require('./infra/knexfile'); //destrutor para destruir o objeto e pegou apenas o atributo
+import express, { json } from 'express';
+import cors from "cors";
+import { db_connection } from './infra/knexfile.js';
+import { authenticationMiddleware } from './infra/routes/middlewares/index.js';
+import { userRoutes } from './infra/routes/user/index.js';
+import { messageRoutes } from './infra/routes/message/index.js';
 
+const whitelist = ["http://localhost:3000"]
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || whitelist.indexOf(origin) !== -1) {
+      callback(null, true)
+    } else {
+      callback(new Error("Not allowed by CORS"))
+    }
+  },
+  credentials: true,
+}
 
-const app = express();   //executa o express
-app.use(express.json());
+const app = express();
+app.use(cors(corsOptions))
+app.use(json());
 
-async function authenticationMiddleware(request, response, next){ 
-    const{useridentifier} = request.headers; //uma boa pratica e mais segura seria utilizar um JWT com passport
-    
-    if(!useridentifier) return response.status(401).json({ error: 'Invalid User '});
-    
-    const [user] = await db_connection('usuarios').where({ id: Number(useridentifier) }).select();
+//middle impossibilita o usuário de usar outras telas quando não estiver logado
+//next é um callback quando ele termina de executar uma função ele chama a proxima
 
-    if(!user) return response.status(403).json({error: 'Forbidden user'})
+app.post('/login', async function (request, response) {
+  const { email, senha } = request.body;
 
-    request.user = user;
-    return next();
+ if (!email || !senha) return response.status(400).json({ error: 'Missing Parameters' });
 
-};
- //middle impossibilita o usuário de usar outras telas quando não estiver logado
-  //next é um callback quando ele termina de executar uma função ele chama a proxima
+  const user = await db_connection('usuarios').where({ email: email, senha: senha }).select();
+  console.log(user);
+  if (!user.length) return response.status(204).send();
 
-app.post('/user', authenticationMiddleware, async function (request, response){
-    const { name, password, email, birthDate } = request.body;
-    const [db_response] = await db_connection('usuarios').insert({
-        nome: name, 
-        email: email,
-        data_nasc: birthDate,
-        senha: password
-    });
-    console.log(db_response);
-    return response.status(200).json({user_id: db_response});
-
+  return response.status(200).json({
+    server: 'Sucessfull Login!',
+    useridentifier: user[0].id
+  });
 });
 
+app.use(authenticationMiddleware)
 
-app.post('/login', async function(request,response){
-    const { email, password } = request.body;
+app.use('/user', userRoutes);
+app.use('/messages', messageRoutes);
 
-    if(!email || !password) return response.status(400).json({error: 'Missing Parameters'});
-
-    const user = await db_connection('usuarios').where({email: email, senha: password}).select();
-
-    if(!user.length) return response.status(204).send();
-
-    return response.status(200).json({server: 'Sucessfull Login!'});
-});
-
-
-app.get('/user',authenticationMiddleware, async function (request, response){
-    const dbResponse = await db_connection('usuarios').select();
-
-    return response.json(dbResponse)
-
-});
-
-app.get('/messages/sent', authenticationMiddleware, async (request, response) =>{
-    const { user } = request;
-
-    const messages = await db_connection('user_message')
-    .where({sender_identifier: Number(user.id) })
-    .select()
-    .orderBy('createdAt', 'desc');
-    
-    return response.status(200).json(messages);
-});
-
-app.get('/messages/received', authenticationMiddleware, async (request, response) =>{
-    const { user } = request;
-
-    const messages = await db_connection('user_message')
-    .where({receiver_identifier: Number(user.id) })
-    .select()
-    .orderBy('createdAt', 'desc');
-
-    return response.status(200).json(messages);
-});
-
-app.post('/message', authenticationMiddleware, async function(request, response){
-    const { user } = request;
-    const { message, receiverId } = request.body;
-    
-    await db_connection('user_message').insert({
-        sender_identifier: Number(user.id),
-        message: message,
-        createdAt: new Date(),
-        receiver_identifier: Number(receiverId)
-});
-
-    return response.status(200).send();
-
-});
-
-app.listen(5000, function(){
-    console.log("Server is running!");
+app.listen(5000, function () {
+  console.log("Server is running!");
 })
 
-module.exports = { app };
+export default { app };
