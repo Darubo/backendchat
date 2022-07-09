@@ -1,0 +1,6 @@
+Caso deseje popular o banco, execute os comandos sql dentro do arquivo populateusers.sql
+
+Para iniciar o projeto digite npm install 
+Em seguida digite npm start 
+
+Garanta que não tenha nenhum projeto em funcionamento na porta :5000
